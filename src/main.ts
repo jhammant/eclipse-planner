@@ -28,8 +28,10 @@ import {
   clearance,
   computeHorizon,
   destination,
+  nearFieldAltitude,
   obstructionAt,
   withBuildings,
+  withNearField,
   type HorizonProfile,
 } from './horizon';
 import { renderSky } from './skyview';
@@ -59,6 +61,11 @@ interface State {
   frameIndex: number;
   playing: boolean;
   recording: boolean;
+  /** Measured skyline, before the user's near-field screen is applied. */
+  baseProfile: HorizonProfile | null;
+  /** User-described trees / houses in front of them. */
+  nearHeight: number;
+  nearDistance: number;
 }
 
 const state: State = {
@@ -73,6 +80,9 @@ const state: State = {
   frameIndex: 60,
   playing: false,
   recording: false,
+  baseProfile: null,
+  nearHeight: 0,
+  nearDistance: 20,
 };
 
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel) as T;
@@ -93,7 +103,13 @@ const hintEl = $('#finder-hint');
  * The location lives in the URL hash, so any spot can be linked and shared, and
  * refresh/back behave the way people expect.
  */
-function readHash(): { lat: number; lng: number; label?: string } | null {
+function readHash(): {
+  lat: number;
+  lng: number;
+  label?: string;
+  nearHeight?: number;
+  nearDistance?: number;
+} | null {
   const h = new URLSearchParams(location.hash.replace(/^#/, ''));
   const latRaw = h.get('lat');
   const lngRaw = h.get('lng');
@@ -105,7 +121,16 @@ function readHash(): { lat: number; lng: number; label?: string } | null {
   const lng = Number(lngRaw);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-  return { lat, lng, label: h.get('at') ?? undefined };
+
+  const nh = Number(h.get('nh'));
+  const nd = Number(h.get('nd'));
+  return {
+    lat,
+    lng,
+    label: h.get('at') ?? undefined,
+    nearHeight: Number.isFinite(nh) && nh > 0 ? nh : undefined,
+    nearDistance: Number.isFinite(nd) && nd > 0 ? nd : undefined,
+  };
 }
 
 let suppressHashHandler = false;
@@ -115,6 +140,10 @@ function writeHash(lat: number, lng: number, label: string) {
   h.set('lat', lat.toFixed(5));
   h.set('lng', lng.toFixed(5));
   if (label) h.set('at', label);
+  if (state.nearHeight > 0) {
+    h.set('nh', String(state.nearHeight));
+    h.set('nd', String(state.nearDistance));
+  }
   suppressHashHandler = true;
   location.hash = h.toString();
   // The hashchange event fires asynchronously; clear the guard after it lands.
@@ -274,7 +303,8 @@ async function update(lat: number, lng: number, label = '') {
   const circ = circumstances(observer);
   if (!circ) return;
 
-  state.profile = terrain;
+  state.baseProfile = terrain;
+  state.profile = applyNearField(terrain);
   state.circ = circ;
   state.frames = timeline(circ, observer, 160);
 
@@ -310,7 +340,8 @@ async function update(lat: number, lng: number, label = '') {
       lng,
       eyeElevation: terrain.groundElevation + terrain.eyeHeight,
     });
-    state.profile = withBuildings(terrain, bins);
+    state.baseProfile = withBuildings(terrain, bins);
+    state.profile = applyNearField(state.baseProfile);
     state.buildingCount = buildings.length;
     renderReport();
     renderCurrentFrame();
@@ -351,7 +382,12 @@ function renderReport() {
   const peakClear = clearance(profile, circ.peak.sun.azimuth, circ.peak.sun.altitude);
   const pct = (circ.peakObscuration * 100).toFixed(1);
   const blocker = obstructionAt(profile, circ.peak.sun.azimuth);
-  const blockerWord = blocker?.source === 'building' ? 'a building' : 'high ground';
+  const blockerWord =
+    blocker?.source === 'assumed'
+      ? 'the trees or buildings you described'
+      : blocker?.source === 'building'
+      ? 'a building'
+      : 'high ground';
 
   let tone: string;
   let headline: string;
@@ -420,6 +456,10 @@ function renderReport() {
       state.buildingCount
         ? `Skyline includes ${state.buildingCount.toLocaleString()} OpenStreetMap buildings within ${BUILDING_RADIUS_M} m.`
         : 'Terrain only — no building data for this spot.'
+    }${
+      state.nearHeight > 0
+        ? ` Plus your assumed ${state.nearHeight} m screen at ${state.nearDistance} m.`
+        : ' Trees are not included — use the buttons under the view to add them.'
     }</p>
 
     <h3 class="section">Cloud forecast</h3>
@@ -475,6 +515,10 @@ function renderCurrentFrame() {
     centerAzimuth: frame.sun.azimuth,
     centerAltitude,
     verticalSpanDeg: state.verticalSpan,
+    assumedAltitude:
+      state.nearHeight > 0 && state.profile
+        ? nearFieldAltitude(state.profile, state.nearHeight, state.nearDistance)
+        : undefined,
   });
 
   const cl = state.profile
@@ -820,6 +864,70 @@ findBtn.addEventListener('click', async () => {
   }
 });
 
+// ---------------------------------------------------------------- near field
+
+const nfPresets = $('#nf-presets');
+const nfHeight = $<HTMLInputElement>('#nf-height');
+const nfDistance = $<HTMLInputElement>('#nf-distance');
+const nfHeightOut = $<HTMLOutputElement>('#nf-h-out');
+const nfDistanceOut = $<HTMLOutputElement>('#nf-d-out');
+
+/** Overlay the user's described screen on top of the measured skyline. */
+function applyNearField(profile: HorizonProfile): HorizonProfile {
+  return state.nearHeight > 0
+    ? withNearField(profile, state.nearHeight, state.nearDistance)
+    : profile;
+}
+
+function syncNearFieldUI() {
+  nfHeight.value = String(state.nearHeight);
+  nfDistance.value = String(state.nearDistance);
+  nfHeightOut.value = state.nearHeight > 0 ? `${state.nearHeight} m` : 'none';
+  nfDistanceOut.value = state.nearHeight > 0 ? `${state.nearDistance} m` : '—';
+
+  for (const b of nfPresets.querySelectorAll('button')) {
+    const h = Number((b as HTMLElement).dataset.h);
+    const d = Number((b as HTMLElement).dataset.d);
+    const active =
+      h === state.nearHeight && (h === 0 || d === state.nearDistance);
+    b.classList.toggle('on', active);
+  }
+}
+
+/** Recompute the verdict and repaint without re-fetching any data. */
+function reapplyNearField() {
+  if (!state.baseProfile) return;
+  state.profile = applyNearField(state.baseProfile);
+  writeHash(state.lat, state.lng, state.label);
+  syncNearFieldUI();
+  renderReport();
+  renderCurrentFrame();
+}
+
+nfPresets.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('button');
+  if (!btn) return;
+  state.nearHeight = Number(btn.dataset.h);
+  if (state.nearHeight > 0) state.nearDistance = Number(btn.dataset.d);
+  reapplyNearField();
+});
+
+nfHeight.addEventListener('input', () => {
+  state.nearHeight = Number(nfHeight.value);
+  reapplyNearField();
+});
+
+nfDistance.addEventListener('input', () => {
+  state.nearDistance = Number(nfDistance.value);
+  reapplyNearField();
+});
+
 // ---------------------------------------------------------------- start
 // Last, so every binding above is initialised before `update` runs.
-void update(start.lat, start.lng, (start as { label?: string }).label ?? '');
+const seed = start as { label?: string; nearHeight?: number; nearDistance?: number };
+if (seed.nearHeight) {
+  state.nearHeight = seed.nearHeight;
+  state.nearDistance = seed.nearDistance ?? 20;
+}
+syncNearFieldUI();
+void update(start.lat, start.lng, seed.label ?? '');

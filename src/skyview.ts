@@ -20,6 +20,12 @@ export interface SkyViewOptions {
    * extent is then whatever the aspect ratio gives us.
    */
   verticalSpanDeg: number;
+  /**
+   * Angular height of a user-described near-field screen (trees, houses). Drawn
+   * distinctly, because it is an assumption the viewer typed in rather than
+   * something measured from data.
+   */
+  assumedAltitude?: number;
 }
 
 interface Projection {
@@ -224,8 +230,43 @@ export function renderSky(
   paintSky(ctx, width, height, proj, frame);
   paintSun(ctx, proj, frame);
   paintTerrain(ctx, width, height, proj, profile, opts);
+  paintAssumed(ctx, width, height, proj, opts);
   paintHiddenSun(ctx, proj, profile, frame);
   paintGrid(ctx, width, height, proj, opts);
+}
+
+/** Draw the assumed tree/house screen, visibly distinct from measured terrain. */
+function paintAssumed(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  proj: Projection,
+  opts: SkyViewOptions,
+) {
+  const alt = opts.assumedAltitude;
+  if (alt === undefined || alt <= -89) return;
+
+  const y = proj.toY(alt);
+  if (y > height) return;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(74, 222, 128, 0.14)';
+  ctx.fillRect(0, y, width, height - y);
+
+  ctx.setLineDash([7, 5]);
+  ctx.strokeStyle = 'rgba(122, 231, 158, 0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(width, y);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(150, 240, 180, 0.95)';
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`assumed screen  ${alt.toFixed(1)}°`, width - 8, y + 5);
+  ctx.restore();
 }
 
 /**

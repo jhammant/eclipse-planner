@@ -25,8 +25,11 @@ export interface HorizonSample {
   distance: number;
   /** Elevation of that obstruction, metres above datum. */
   elevation: number;
-  /** What forms the skyline here — used to explain a blocked verdict. */
-  source: 'terrain' | 'building';
+  /**
+   * What forms the skyline here. 'assumed' is a user-supplied near-field screen
+   * (trees, the houses opposite) rather than something measured from data.
+   */
+  source: 'terrain' | 'building' | 'assumed';
 }
 
 export interface HorizonProfile {
@@ -186,4 +189,49 @@ export function obstructionAt(profile: HorizonProfile, azimuth: number): Horizon
     if (d < bestDelta) { bestDelta = d; best = s; }
   }
   return best;
+}
+
+/**
+ * Apply a near-field screen the user describes — a tree line, the houses across
+ * the road — as a floor under the whole skyline.
+ *
+ * Trees are absent from every open dataset, and at 2-19° Sun altitude they are
+ * usually the thing that actually decides it, so letting people state what is in
+ * front of them is more honest than silently assuming open ground.
+ *
+ * `height` is measured from the ground, `distance` horizontally from the observer.
+ */
+export function withNearField(
+  profile: HorizonProfile,
+  height: number,
+  distance: number,
+): HorizonProfile {
+  if (height <= 0 || distance <= 0) return profile;
+
+  const rise = height - profile.eyeHeight;
+  const altitude = (Math.atan2(rise, distance) * 180) / Math.PI;
+
+  const samples = profile.samples.map((s) =>
+    altitude > s.altitude
+      ? {
+          azimuth: s.azimuth,
+          altitude,
+          distance,
+          elevation: profile.groundElevation + height,
+          source: 'assumed' as const,
+        }
+      : s,
+  );
+
+  return { ...profile, samples };
+}
+
+/** Angular elevation of a near-field screen, for labelling the sky view. */
+export function nearFieldAltitude(
+  profile: HorizonProfile,
+  height: number,
+  distance: number,
+): number {
+  if (height <= 0 || distance <= 0) return -90;
+  return (Math.atan2(height - profile.eyeHeight, distance) * 180) / Math.PI;
 }

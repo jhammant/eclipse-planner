@@ -40,7 +40,13 @@ So the tool combines three layers:
 - **Save video** — records the animation to a `.webm` you can share.
 - **Best spot near me** — scans a grid of nearby locations, scores each on horizon
   clearance and cloud, and pins the winners.
-- **Shareable links** — the location lives in the URL, so any spot can be sent on.
+- **Trees and houses** — presets (hedge, houses opposite, mature trees) plus height
+  and distance sliders for whatever is actually in front of you. Trees appear in no
+  open dataset and at 2–19° Sun altitude they usually decide the outcome, so the tool
+  asks rather than silently assuming open ground. The assumed screen is drawn in a
+  distinct colour so it never gets confused with measured terrain.
+- **Shareable links** — the location lives in the URL (including your assumed
+  screen), so any spot can be sent on.
 - **3D map** — pitched terrain view with a sightline showing which way to look.
 
 ## Running it
@@ -94,10 +100,11 @@ Building for a subpath instead (e.g. a GitHub Pages project site served from
   solar-position implementation and against published figures for London
   (91.3% computed vs 91.4% published).
 - **The elevation model is bare terrain at ~30 m resolution**, with OSM buildings
-  layered on top. **Trees are not modelled at all**, and close in they dominate: at
-  maximum eclipse from London a 20 m tree blocks the Sun unless it is ~100 m away,
-  and by last contact that grows to ~390 m. Treat a "clear" verdict as *the terrain
-  and the mapped buildings are not in the way* — then check the near field yourself.
+  layered on top. **No dataset contains trees**, so the tool lets you describe them
+  instead. They matter enormously: from London at maximum, houses 8 m tall across a
+  25 m road already block the Sun (−3.9°), and mature trees at 40 m block it by 8°.
+  A hedge, by contrast, leaves it clear. Treat a "clear" verdict as *the terrain and
+  mapped buildings are not in the way* — then set the screen to match your spot.
 - Building heights come from OSM `height` or `building:levels` tags; where both are
   missing an 8 m default is assumed, so low-rise areas may be slightly off.
 - Cloud forecasts more than a couple of days out are indicative only.

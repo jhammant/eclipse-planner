@@ -83,9 +83,36 @@
           <input id="time" type="range" min="0" max="120" step="1" value="60" aria-label="Time through the eclipse" />
           <output id="time-label">—</output>
         </div>
+
+        <!-- Trees aren't in any open dataset, and at this Sun altitude they usually
+             decide the outcome. So let people describe what's actually in front. -->
+        <div class="nearfield">
+          <div class="nf-head">
+            <strong>What's in front of you?</strong>
+            <span class="nf-note">Trees and fences aren't in the map data — add them here.</span>
+          </div>
+          <div class="nf-presets" id="nf-presets">
+            <button type="button" data-h="0"  data-d="0"   class="on">Open view</button>
+            <button type="button" data-h="2"  data-d="8">Fence or hedge</button>
+            <button type="button" data-h="8"  data-d="25">Houses opposite</button>
+            <button type="button" data-h="15" data-d="40">Mature trees</button>
+            <button type="button" data-h="20" data-d="15">Big tree, close</button>
+          </div>
+          <div class="nf-sliders">
+            <label>
+              Height <output id="nf-h-out">0 m</output>
+              <input id="nf-height" type="range" min="0" max="30" step="0.5" value="0" />
+            </label>
+            <label>
+              Distance <output id="nf-d-out">0 m</output>
+              <input id="nf-distance" type="range" min="3" max="200" step="1" value="20" />
+            </label>
+          </div>
+        </div>
         <p class="hint" id="sky-hint">
           Real skyline from 30&nbsp;m elevation data plus OpenStreetMap building heights.
-          Trees are not included — check the near field yourself.
+          Trees aren't mapped anywhere, so add what's actually in front of you above —
+          at this Sun altitude it usually decides the answer.
         </p>
       </section>
 
