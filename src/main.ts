@@ -1,5 +1,4 @@
 import {
-  GeolocateControl,
   MapLibreMap,
   Marker,
   NavigationControl,
@@ -11,6 +10,7 @@ import './style.css';
 
 import {
   buildingSkyline,
+  containingBuilding,
   fetchBuildings,
   preloadBuildingTiles,
   BUILDING_RADIUS_M,
@@ -43,8 +43,12 @@ import {
   type CloudForecast,
 } from './weather';
 
-/** Alexandra Palace — high, with a clear western horizon. */
-const DEFAULT = { lat: 51.5944, lng: -0.13 };
+/**
+ * Open parkland south of Alexandra Palace: high ground with a clear western
+ * horizon. Deliberately NOT the palace itself — that coordinate falls inside the
+ * building footprint, and the example spot must not open on "move the pin".
+ */
+const DEFAULT = { lat: 51.593, lng: -0.13 };
 
 const TERRAIN_SOURCE = 'terrarium';
 
@@ -56,7 +60,12 @@ interface State {
   circ: Circumstances | null;
   frames: Frame[];
   forecast: CloudForecast[] | null | undefined;
-  buildingCount: number;
+  /** 'pending' while querying, 'failed' if the query died, else how many were found. */
+  buildings: 'pending' | 'failed' | number;
+  /** The pin sits inside a footprint, so its own walls must not be modelled. */
+  insideBuilding: boolean;
+  /** Has the user actually told us what is in front of them? */
+  nearAnswered: boolean;
   verticalSpan: number;
   frameIndex: number;
   playing: boolean;
@@ -75,7 +84,9 @@ const state: State = {
   circ: null,
   frames: [],
   forecast: undefined,
-  buildingCount: 0,
+  buildings: 'pending',
+  insideBuilding: false,
+  nearAnswered: false,
   verticalSpan: 26,
   frameIndex: 60,
   playing: false,
@@ -172,6 +183,10 @@ const map = new MapLibreMap({
   pitch: 55,
   maxPitch: 85,
   attributionControl: { compact: true },
+  // Without this the map's touch-action: none swallows one-finger scrolling and
+  // the page reads as frozen on a phone. Two fingers still pan; a tap still drops
+  // the pin. On desktop it also stops the wheel hijacking page scroll.
+  cooperativeGestures: true,
 });
 
 if (import.meta.env.DEV) {
@@ -188,7 +203,6 @@ map.on('error', (e) => {
 });
 
 map.addControl(new NavigationControl({ visualizePitch: true }), 'top-right');
-map.addControl(new GeolocateControl({ trackUserLocation: false }), 'top-right');
 map.addControl(new ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
 
 const marker = new Marker({ color: '#ffb84d', draggable: true })
@@ -237,13 +251,20 @@ map.on('load', () => {
 
 map.on('click', (e: MapMouseEvent) => {
   marker.setLngLat(e.lngLat);
+  clearSearchBox();
   void update(e.lngLat.lat, e.lngLat.lng, '');
 });
 
 marker.on('dragend', () => {
   const { lat, lng } = marker.getLngLat();
+  clearSearchBox();
   void update(lat, lng, '');
 });
+
+function clearSearchBox() {
+  const el = document.querySelector<HTMLInputElement>('#place-search');
+  if (el) el.value = '';
+}
 
 function emptyFC() {
   return { type: 'FeatureCollection' as const, features: [] };
@@ -276,9 +297,11 @@ async function update(lat: number, lng: number, label = '') {
   state.lng = lng;
   state.label = label;
   state.forecast = undefined;
+  state.buildings = 'pending';
+  state.insideBuilding = false;
   writeHash(lat, lng, label);
 
-  reportEl.innerHTML = '<p class="spinner">Sampling terrain and buildings…</p>';
+  reportEl.innerHTML = '<p class="spinner">Working out the hills around you…</p>';
 
   // A first pass at sea level tells us which slice of sky to profile.
   const rough = circumstances(observerAt(lat, lng, 0));
@@ -328,10 +351,32 @@ async function update(lat: number, lng: number, label = '') {
 
   void (async () => {
     const buildings = await fetchBuildings(lat, lng, BUILDING_RADIUS_M);
-    if (gen !== generation || !buildings.length) {
-      if (gen === generation) state.buildingCount = 0;
+    if (gen !== generation) return;
+
+    // Each branch repaints: leaving the 'pending' text on screen would keep
+    // claiming we were still checking long after we stopped.
+    if (buildings === null) {
+      state.buildings = 'failed';
+      renderReport();
       return;
     }
+    if (!buildings.length) {
+      state.buildings = 0;
+      renderReport();
+      return;
+    }
+
+    // A geocoded house number, a postcode, or an indoor GPS fix all land inside a
+    // footprint. Modelling the observer's own walls would wrap a 30-40° obstruction
+    // right around them and report a confident, wrong "hidden".
+    if (containingBuilding(lng, lat, buildings)) {
+      state.insideBuilding = true;
+      state.buildings = 0;
+      renderReport();
+      renderCurrentFrame();
+      return;
+    }
+
     await preloadBuildingTiles(buildings);
     if (gen !== generation) return;
 
@@ -342,7 +387,7 @@ async function update(lat: number, lng: number, label = '') {
     });
     state.baseProfile = withBuildings(terrain, bins);
     state.profile = applyNearField(state.baseProfile);
-    state.buildingCount = buildings.length;
+    state.buildings = buildings.length;
     renderReport();
     renderCurrentFrame();
   })();
@@ -375,6 +420,39 @@ function contactRow(label: string, frame: Frame | null, profile: HorizonProfile)
     </tr>`;
 }
 
+/**
+ * Always say whose spot this is. Without it, someone in a Sheffield valley reads a
+ * confident green verdict that is silently about a park in London.
+ */
+function whereamiHtml(): string {
+  const isExample =
+    !state.label && state.lat === DEFAULT.lat && state.lng === DEFAULT.lng;
+  if (isExample) {
+    return `<p class="whereami example">Example spot: Alexandra Palace, London —
+      enter your address above to check yours.</p>`;
+  }
+  const where = state.label
+    ? escapeHtml(state.label)
+    : `Pin you dropped: ${state.lat.toFixed(4)}, ${state.lng.toFixed(4)}`;
+  return `<p class="whereami">${where}</p>`;
+}
+
+/** Say what we actually checked — never imply buildings were included when they weren't. */
+function buildingsNote(): string {
+  if (state.insideBuilding) return 'Pin is inside a building, so buildings were not applied.';
+  if (state.buildings === 'pending') {
+    return `Still checking OpenStreetMap for buildings within ${BUILDING_RADIUS_M} m — this answer
+      is terrain only so far.`;
+  }
+  if (state.buildings === 'failed') {
+    return `Couldn't load building data (the map server is busy), so this is terrain only and may
+      be too optimistic in a town. <button type="button" id="retry-buildings">Try again</button>`;
+  }
+  if (state.buildings === 0) return `No buildings mapped within ${BUILDING_RADIUS_M} m.`;
+  return `Skyline includes ${state.buildings.toLocaleString()} OpenStreetMap buildings within
+    ${BUILDING_RADIUS_M} m.`;
+}
+
 function renderReport() {
   const { circ, profile, forecast } = state;
   if (!circ || !profile) return;
@@ -393,22 +471,74 @@ function renderReport() {
   let headline: string;
   let detail: string;
 
-  if (peakClear <= 0) {
+  // Scan the whole event, not just maximum: a spot can be wide open at first
+  // contact and lost behind a roof well before the deepest point.
+  const visible = state.frames.map(
+    (f) => clearance(profile, f.sun.azimuth, f.sun.altitude) > 0,
+  );
+  const firstVis = visible.indexOf(true);
+  const lastVis = visible.lastIndexOf(true);
+  const bestVis = firstVis < 0
+    ? 0
+    : Math.max(...state.frames.filter((_, i) => visible[i]).map((f) => f.obscuration));
+  const minutesBetween = (a: Date, b: Date) => Math.round(Math.abs(+b - +a) / 60000);
+
+  const checkedBuildings = typeof state.buildings === 'number' && state.buildings > 0;
+
+  if (state.insideBuilding) {
+    tone = 'warn';
+    headline = 'Move the pin outside';
+    detail = `This pin is inside a building, so we can't tell what sky it sees. Drag it to the
+      garden, balcony, street or field where you'll actually be standing.`;
+  } else if (firstVis < 0) {
     tone = 'bad';
-    headline = 'Hidden';
-    detail = `At maximum the Sun is behind ${blockerWord}
-      ${blocker ? `about ${Math.round(blocker.distance)} m away` : ''}. Move somewhere with an open
-      western view — or use "find the best spot near me".`;
+    headline = 'No — not from here';
+    detail = `The Sun stays behind ${blockerWord}${
+      blocker ? ` about ${Math.round(blocker.distance)} m away` : ''
+    } for the whole eclipse. You need somewhere with an open view to the west, where the Sun sets.`;
+  } else if (peakClear <= 0) {
+    const lostAt = state.frames[lastVis];
+    const lateBlocker = obstructionAt(profile, lostAt.sun.azimuth);
+    const lateWord =
+      lateBlocker?.source === 'assumed'
+        ? 'what you described'
+        : lateBlocker?.source === 'building'
+        ? 'a building'
+        : 'high ground';
+    tone = 'warn';
+    headline = `${Math.round(bestVis * 100)}% — then it disappears`;
+    detail = `You'll see the first ${minutesBetween(state.frames[0].time, lostAt.time)} minutes,
+      reaching ${Math.round(bestVis * 100)}% covered. Then the Sun slips behind ${lateWord} at
+      ${formatTime(lostAt.time)}, before the deepest point.`;
   } else if (peakClear < 3) {
     tone = 'warn';
-    headline = `${pct}% — but tight`;
-    detail = `Only ${peakClear.toFixed(1)}° of clearance above the skyline at maximum. Trees or a
-      single tall building could still hide it. Find an open western aspect.`;
+    headline = 'Maybe — it will be close';
+    detail = `The Sun clears your skyline by ${peakClear.toFixed(1)}° — ${
+      peakClear < 1.5 ? "about a finger's width" : "about two fingers' width"
+    } held at arm's length. Anything you haven't told us about will hide it.`;
   } else {
     tone = 'good';
-    headline = `${pct}% covered`;
-    detail = `The Sun sits ${peakClear.toFixed(1)}° above the skyline at maximum — a clear view,
-      as far as the landscape and buildings are concerned.`;
+    headline = `Yes — ${pct}% of the Sun covered`;
+    detail = `The Sun sits ${peakClear.toFixed(0)}° above your skyline at the deepest point, so ${
+      checkedBuildings ? 'the hills and buildings' : "the hills"
+    } won't get in the way${checkedBuildings ? '' : " — we couldn't check buildings here"}.
+      It won't go dark: expect a strange, flat, dimmed evening light.`;
+
+    // Clear at maximum but lost before the end is worth saying out loud.
+    if (lastVis < state.frames.length - 1) {
+      const lostAt = state.frames[lastVis];
+      const lostMins = minutesBetween(lostAt.time, state.frames[state.frames.length - 1].time);
+      if (lostMins >= 3) {
+        detail += ` It drops behind your skyline at ${formatTime(lostAt.time)}, so you'll miss the
+          last ${lostMins} minutes.`;
+      }
+    }
+  }
+
+  // Never let a green verdict imply we accounted for trees the user never mentioned.
+  if ((tone === 'good' || tone === 'warn') && !state.nearAnswered && !state.insideBuilding) {
+    detail += ` <strong>This assumes nothing is in front of you.</strong> Trees and fences aren't on
+      any map — tell us what you can actually see, below.`;
   }
 
   const cloud = forecast ? meanCloud(forecast) : null;
@@ -420,7 +550,7 @@ function renderReport() {
       <p>${detail}</p>
     </div>
 
-    ${state.label ? `<p class="whereami">${escapeHtml(state.label)}</p>` : ''}
+    ${whereamiHtml()}
 
     <div class="stat-row">
       <div class="stat">
@@ -452,14 +582,10 @@ function renderReport() {
         ${contactRow('Last contact', circ.partialEnd, profile)}
       </tbody>
     </table>
-    <p class="note">${
-      state.buildingCount
-        ? `Skyline includes ${state.buildingCount.toLocaleString()} OpenStreetMap buildings within ${BUILDING_RADIUS_M} m.`
-        : 'Terrain only — no building data for this spot.'
-    }${
+    <p class="note">${buildingsNote()}${
       state.nearHeight > 0
-        ? ` Plus your assumed ${state.nearHeight} m screen at ${state.nearDistance} m.`
-        : ' Trees are not included — use the buttons under the view to add them.'
+        ? ` Plus your ${state.nearHeight} m screen at ${state.nearDistance} m.`
+        : ''
     }</p>
 
     <h3 class="section">Cloud forecast</h3>
@@ -498,6 +624,13 @@ function escapeHtml(s: string): string {
   d.textContent = s;
   return d.innerHTML;
 }
+
+// The buildings note can render a retry button; delegate so it survives re-renders.
+reportEl.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement)?.id === 'retry-buildings') {
+    void update(state.lat, state.lng, state.label);
+  }
+});
 
 // ---------------------------------------------------------------- sky view
 
@@ -725,14 +858,14 @@ searchForm.addEventListener('submit', async (e) => {
   try {
     const hits = await geocode(q);
     if (!hits.length) {
-      setHint('No match found — try a postcode, or click the map.');
+      setHint('No match found — try a postcode, or scroll down and tap the map.');
       return;
     }
     resultsEl.hidden = true;
     goTo(Number(hits[0].lat), Number(hits[0].lon), shortLabel(hits[0].display_name));
-    setHint('Or click anywhere on the map.');
+    setHint('Or scroll down and tap the map.');
   } catch {
-    setHint('Address lookup failed — click the map instead.');
+    setHint('Address lookup failed — scroll down and tap the map instead.');
   }
 });
 
@@ -764,7 +897,7 @@ $<HTMLButtonElement>('#use-location').addEventListener('click', () => {
   setHint('Finding you…');
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      setHint('Or click anywhere on the map.');
+      setHint('Or scroll down and tap the map.');
       goTo(pos.coords.latitude, pos.coords.longitude, 'My location');
     },
     () => setHint('Location unavailable — type an address instead.'),
@@ -889,7 +1022,7 @@ function syncNearFieldUI() {
     const h = Number((b as HTMLElement).dataset.h);
     const d = Number((b as HTMLElement).dataset.d);
     const active =
-      h === state.nearHeight && (h === 0 || d === state.nearDistance);
+      state.nearAnswered && h === state.nearHeight && (h === 0 || d === state.nearDistance);
     b.classList.toggle('on', active);
   }
 }
@@ -909,16 +1042,19 @@ nfPresets.addEventListener('click', (e) => {
   if (!btn) return;
   state.nearHeight = Number(btn.dataset.h);
   if (state.nearHeight > 0) state.nearDistance = Number(btn.dataset.d);
+  state.nearAnswered = true;
   reapplyNearField();
 });
 
 nfHeight.addEventListener('input', () => {
   state.nearHeight = Number(nfHeight.value);
+  state.nearAnswered = true;
   reapplyNearField();
 });
 
 nfDistance.addEventListener('input', () => {
   state.nearDistance = Number(nfDistance.value);
+  state.nearAnswered = true;
   reapplyNearField();
 });
 
@@ -928,6 +1064,7 @@ const seed = start as { label?: string; nearHeight?: number; nearDistance?: numb
 if (seed.nearHeight) {
   state.nearHeight = seed.nearHeight;
   state.nearDistance = seed.nearDistance ?? 20;
+  state.nearAnswered = true;
 }
 syncNearFieldUI();
 void update(start.lat, start.lng, seed.label ?? '');

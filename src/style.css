@@ -88,6 +88,9 @@ a { color: var(--accent); }
 }
 
 .safety strong { color: var(--accent); }
+.safety details { margin-top: 6px; }
+.safety summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 4px 0; }
+.safety details[open] summary { margin-bottom: 4px; }
 
 /* ---------- finder (the front door) ---------- */
 
@@ -176,7 +179,7 @@ button.ghost:hover:not(:disabled) { color: var(--ink); }
 .layout {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
-  grid-template-areas: 'sky report' 'map report';
+  grid-template-areas: 'map report' 'sky report';
   gap: 14px;
   padding: 14px 20px 24px;
   align-items: start;
@@ -189,16 +192,19 @@ button.ghost:hover:not(:disabled) { color: var(--ink); }
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
-    grid-template-areas: 'sky' 'report' 'map';
+    grid-template-areas: 'report' 'map' 'sky';
     padding: 12px;
     gap: 12px;
   }
   .topbar { padding: 10px 12px; }
   .finder { padding: 14px 12px 12px; }
   .safety { max-width: none; }
-  .search { flex-wrap: wrap; }
-  .search input { flex: 1 1 100%; }
-  .search button[type='submit'] { flex: 1; }
+  /* Keep the field and button on one row: wrapping made .finder 275px tall and
+     pushed the autocomplete list under the iOS keyboard. */
+  .search button[type='submit'] { flex: none; padding: 13px 18px; }
+  .finder-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .zoomctl { flex: 1 1 100%; }
+  .zoomctl input { flex: 1; width: auto; }
 }
 
 .panel {
@@ -242,6 +248,7 @@ button.ghost:hover:not(:disabled) { color: var(--ink); }
 /* ---------- map ---------- */
 
 #map { height: 420px; width: 100%; }
+.maplibregl-marker { touch-action: none; }
 @media (max-width: 960px) { #map { height: 320px; } }
 
 .maplibregl-ctrl-attrib { font-size: 10px; }
@@ -282,12 +289,17 @@ button.ghost:hover:not(:disabled) { color: var(--ink); }
   text-align: right;
 }
 
-input[type='range'] { accent-color: var(--accent); }
+input[type='range'] { accent-color: var(--accent); height: 34px; touch-action: pan-y; }
 
 /* ---------- report ---------- */
 
 .report { padding: 14px; }
 .placeholder, .spinner { color: var(--ink-dim); font-size: 14px; }
+
+.whereami.example {
+  border-left-color: var(--accent);
+  color: #ffd9a8;
+}
 
 .whereami {
   margin: 0 0 12px;

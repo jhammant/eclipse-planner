@@ -68,13 +68,18 @@ function overpassQuery(lat: number, lng: number, radius: number): string {
 out geom;`;
 }
 
-const cache = new Map<string, Promise<BuildingRing[]>>();
+const cache = new Map<string, Promise<BuildingRing[] | null>>();
 
+/**
+ * Returns the footprints, `[]` when the area genuinely has none, or `null` when
+ * the query failed. The caller must distinguish those: claiming "no buildings
+ * here" after a failed request is how a city centre gets a falsely clear verdict.
+ */
 export async function fetchBuildings(
   lat: number,
   lng: number,
   radius = BUILDING_RADIUS_M,
-): Promise<BuildingRing[]> {
+): Promise<BuildingRing[] | null> {
   const key = `${lat.toFixed(4)},${lng.toFixed(4)},${radius}`;
   const hit = cache.get(key);
   if (hit) return hit;
@@ -91,10 +96,10 @@ export async function fetchBuildings(
           body,
           signal: controller.signal,
         });
-        clearTimeout(timer);
-        if (!res.ok) continue;
+        if (!res.ok) { clearTimeout(timer); continue; }
 
         const data = await res.json();
+        clearTimeout(timer);
         const out: BuildingRing[] = [];
 
         for (const el of data.elements ?? []) {
@@ -117,10 +122,12 @@ export async function fetchBuildings(
         }
         return out;
       } catch {
-        // Try the next mirror; buildings are an enhancement, not a hard requirement.
+        // Try the next mirror.
       }
     }
-    return [];
+    // Every mirror failed. Drop the cache entry so a retry can actually re-query.
+    cache.delete(key);
+    return null;
   })();
 
   cache.set(key, pending);
@@ -239,4 +246,33 @@ export async function preloadBuildingTiles(buildings: BuildingRing[]): Promise<v
   if (!pts.length) return;
   await preloadTiles(pts);
   await settleTiles();
+}
+
+/**
+ * The footprint containing a point, if any (even-odd ray casting; Overpass `out
+ * geom` rings are closed and stored as [lng, lat]).
+ *
+ * Geocoding a house number or postcode returns the building's centroid, and an
+ * indoor GPS fix does the same. The observer's own walls are then 6-14 m away and
+ * would be modelled as a wrap-around obstruction tens of degrees high, producing a
+ * confident and completely wrong "hidden" for the most common way people arrive.
+ */
+export function containingBuilding(
+  lng: number,
+  lat: number,
+  buildings: BuildingRing[],
+): BuildingRing | null {
+  for (const b of buildings) {
+    let inside = false;
+    const r = b.ring;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xi, yi] = r[i];
+      const [xj, yj] = r[j];
+      if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    if (inside) return b;
+  }
+  return null;
 }

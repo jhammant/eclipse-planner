@@ -40,8 +40,17 @@
         </div>
       </div>
       <div class="safety" role="note">
-        <strong>Never look directly at the Sun.</strong>
-        Even 99% covered is not safe — use ISO&nbsp;12312-2 eclipse glasses.
+        <strong>Never look at the Sun</strong> — not even when it's nearly all covered, and never
+        through sunglasses, a phone camera or binoculars. Binoculars or a telescope will burn your
+        eye in seconds. Eclipse glasses must be marked <strong>ISO&nbsp;12312-2</strong>.
+        <details>
+          <summary>No eclipse glasses? Watch it safely like this</summary>
+          Make a pinhole in a piece of card with a pin. Stand with your back to the Sun, hold the
+          card up so the sunbeam passes through it, and catch the beam on a second piece of white
+          card about 40&nbsp;cm behind — you'll see the crescent. A kitchen colander works even
+          better, casting dozens of crescents. The Sun is very low on Wednesday, so aim the beam at
+          a card or a wall, <em>not</em> at the ground, where the image smears out and vanishes.
+        </details>
       </div>
     </header>
 
@@ -62,10 +71,26 @@
         <button type="button" id="use-location" class="ghost">Use my location</button>
         <button type="button" id="find-best" class="ghost">Find the best spot near me</button>
       </div>
-      <p class="finder-hint" id="finder-hint">Or click anywhere on the map.</p>
+      <p class="finder-hint" id="finder-hint">Showing an example spot (Alexandra Palace, London) — enter your address above, or scroll down and tap the map.</p>
     </section>
 
     <main class="layout">
+      <section class="panel report-panel">
+        <div class="panel-head">
+          <h2>What happens there</h2>
+          <button type="button" id="share" class="ghost">Copy link</button>
+        </div>
+        <div id="report" class="report">
+          <p class="placeholder">Enter an address to see the local circumstances.</p>
+        </div>
+      </section>
+
+      <section class="panel map-panel">
+        <div class="panel-head"><h2>Pick a spot</h2></div>
+        <div id="map"></div>
+        <p class="hint">Click anywhere to test it. The marker is draggable.</p>
+      </section>
+
       <section class="panel sky-panel">
         <div class="panel-head">
           <h2>The view from there</h2>
@@ -92,7 +117,7 @@
             <span class="nf-note">Trees and fences aren't in the map data — add them here.</span>
           </div>
           <div class="nf-presets" id="nf-presets">
-            <button type="button" data-h="0"  data-d="0"   class="on">Open view</button>
+            <button type="button" data-h="0"  data-d="0">Nothing — open view</button>
             <button type="button" data-h="2"  data-d="8">Fence or hedge</button>
             <button type="button" data-h="8"  data-d="25">Houses opposite</button>
             <button type="button" data-h="15" data-d="40">Mature trees</button>
@@ -116,21 +141,7 @@
         </p>
       </section>
 
-      <section class="panel report-panel">
-        <div class="panel-head">
-          <h2>What happens there</h2>
-          <button type="button" id="share" class="ghost">Copy link</button>
-        </div>
-        <div id="report" class="report">
-          <p class="placeholder">Enter an address to see the local circumstances.</p>
-        </div>
-      </section>
 
-      <section class="panel map-panel">
-        <div class="panel-head"><h2>Pick a spot</h2></div>
-        <div id="map"></div>
-        <p class="hint">Click anywhere to test it. The marker is draggable.</p>
-      </section>
     </main>
 
     <footer class="foot">
