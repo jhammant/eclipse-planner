@@ -95,8 +95,14 @@ const hintEl = $('#finder-hint');
  */
 function readHash(): { lat: number; lng: number; label?: string } | null {
   const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-  const lat = Number(h.get('lat'));
-  const lng = Number(h.get('lng'));
+  const latRaw = h.get('lat');
+  const lngRaw = h.get('lng');
+  // Must test for absence explicitly: Number(null) is 0, not NaN, so a missing
+  // hash would otherwise read as a valid position in the Atlantic at 0°,0°.
+  if (latRaw === null || lngRaw === null) return null;
+
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng, label: h.get('at') ?? undefined };
