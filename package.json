@@ -1,0 +1,26 @@
+{
+  "name": "eclipse-planner",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "deploy": "bash scripts/deploy.sh"
+  },
+  "keywords": [],
+  "author": "Jon Hammant <jon@hammant.io>",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "maplibre-gl": "^5.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  },
+  "private": true,
+  "type": "module"
+}

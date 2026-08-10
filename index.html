@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Will I see the eclipse? — 12 August 2026</title>
+    <meta
+      name="description"
+      content="Type your address to find out whether you'll actually see the 12 August 2026 partial solar eclipse — including whether hills and buildings get in the way. Watch a simulation of the view from your spot."
+    />
+    <link rel="canonical" href="https://eclipse.hammantlabs.com/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Will I see the eclipse?" />
+    <meta property="og:title" content="Will I see the eclipse? — 12 August 2026" />
+    <meta
+      property="og:description"
+      content="Type your address and see exactly what the eclipse will look like from there — accounting for the hills and buildings on your horizon."
+    />
+    <meta property="og:url" content="https://eclipse.hammantlabs.com/" />
+    <meta property="og:image" content="https://eclipse.hammantlabs.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Will I see the eclipse? — 12 August 2026" />
+    <meta
+      name="twitter:description"
+      content="Type your address and see exactly what the eclipse will look like from there."
+    />
+    <meta name="twitter:image" content="https://eclipse.hammantlabs.com/og.png" />
+    <meta name="theme-color" content="#0b0e16" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="glyph" aria-hidden="true"></span>
+        <div>
+          <h1>Will I see the eclipse?</h1>
+          <p>Partial solar eclipse &middot; Wednesday 12 August 2026 &middot; UK</p>
+        </div>
+      </div>
+      <div class="safety" role="note">
+        <strong>Never look directly at the Sun.</strong>
+        Even 99% covered is not safe — use ISO&nbsp;12312-2 eclipse glasses.
+      </div>
+    </header>
+
+    <!-- Address entry is the front door: most people arrive wanting to type where they live. -->
+    <section class="finder">
+      <form class="search" id="search-form" role="search" autocomplete="off">
+        <label class="sr-only" for="place-search">Your address, postcode or place</label>
+        <input
+          id="place-search"
+          type="search"
+          placeholder="Enter your address or postcode…"
+          enterkeyhint="search"
+        />
+        <button type="submit" id="search-go">Check</button>
+        <ul id="search-results" class="search-results" hidden role="listbox"></ul>
+      </form>
+      <div class="finder-actions">
+        <button type="button" id="use-location" class="ghost">Use my location</button>
+        <button type="button" id="find-best" class="ghost">Find the best spot near me</button>
+      </div>
+      <p class="finder-hint" id="finder-hint">Or click anywhere on the map.</p>
+    </section>
+
+    <main class="layout">
+      <section class="panel sky-panel">
+        <div class="panel-head">
+          <h2>The view from there</h2>
+          <div class="sky-controls">
+            <button type="button" id="play" class="primary">▶ Play</button>
+            <button type="button" id="record" class="ghost" title="Download a video clip of this view">Save video</button>
+            <label class="zoomctl">
+              Zoom
+              <input id="zoom" type="range" min="2" max="60" step="1" value="36" />
+            </label>
+          </div>
+        </div>
+        <canvas id="sky"></canvas>
+        <div class="scrubber">
+          <input id="time" type="range" min="0" max="120" step="1" value="60" aria-label="Time through the eclipse" />
+          <output id="time-label">—</output>
+        </div>
+        <p class="hint" id="sky-hint">
+          Real skyline from 30&nbsp;m elevation data plus OpenStreetMap building heights.
+          Trees are not included — check the near field yourself.
+        </p>
+      </section>
+
+      <section class="panel report-panel">
+        <div class="panel-head">
+          <h2>What happens there</h2>
+          <button type="button" id="share" class="ghost">Copy link</button>
+        </div>
+        <div id="report" class="report">
+          <p class="placeholder">Enter an address to see the local circumstances.</p>
+        </div>
+      </section>
+
+      <section class="panel map-panel">
+        <div class="panel-head"><h2>Pick a spot</h2></div>
+        <div id="map"></div>
+        <p class="hint">Click anywhere to test it. The marker is draggable.</p>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>
+        Built with <a href="https://github.com/cosinekitty/astronomy">astronomy-engine</a>,
+        <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>,
+        <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> and
+        <a href="https://open-meteo.com/">Open-Meteo</a>.
+        No tracking, no accounts, runs entirely in your browser.
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
