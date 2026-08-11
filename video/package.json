@@ -1,0 +1,21 @@
+{
+  "name": "eclipse-planner-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion composition for the eclipse-planner launch video",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render EclipseLaunch out/eclipse-launch.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.508",
+    "astronomy-engine": "^2.1.19",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.508"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}
