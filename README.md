@@ -1,11 +1,47 @@
 # Will I see the eclipse?
 
-An interactive planner for the **partial solar eclipse of Wednesday 12 August 2026**,
-as seen from the UK. Type your address — or click the map — and it answers the
-question generic eclipse sites don't: *will the hills and buildings around you
-actually let you see it?*
+**Every eclipse site tells you the time and the percentage. None of them tell you
+whether the hill, the terrace of houses or the tree in front of you is in the way.**
 
-Everything runs client-side. There is no backend, no API key, and no tracking.
+For the partial solar eclipse of **Wednesday 12 August 2026**, that is the only
+question that matters. From the UK the Sun is between **19° and 2.7°** above the
+horizon for the whole event — so low that an 8 m house 25 m away hides it
+completely, and mature trees 40 m away block it by 8°. A hedge is fine. Knowing it
+is "91% covered at 19:13" tells you almost nothing about whether *you* will see it.
+
+Type your address. This ray-marches a 30 m elevation model plus OpenStreetMap
+building heights along the real line to the Sun, and gives you a straight yes or
+no — plus a simulation of the view and a map of where nearby you can see it.
+
+Live at **[eclipse.hammantlabs.com](https://eclipse.hammantlabs.com)**. Everything
+runs client-side: no backend, no API key, no accounts, no tracking.
+
+## How it works
+
+```mermaid
+flowchart TD
+    A["Address, GPS or map tap"] --> B["astronomy-engine<br/>contact times, Sun alt/az, obscuration"]
+    B --> C["Horizon ray-march<br/>~120 azimuths x 64 ranges over a 30 m DEM<br/>Earth curvature + refraction"]
+    C --> D["OpenStreetMap buildings<br/>footprints extruded to tagged height"]
+    D --> E["Your own trees and fences<br/>height + distance you supply"]
+    E --> F{"Is the Sun above<br/>that skyline?"}
+    F -->|yes| G["Yes - N% covered"]
+    F -->|"only at first"| H["N% then it disappears"]
+    F -->|no| I["No - not from here"]
+    C --> J["Visibility scan<br/>1089 spots, narrow window on the Sun's bearing"]
+    J --> K["Sun/shade map of the area"]
+    B --> L["Sky view<br/>true angular sizes, skyline drawn over the discs"]
+    M["Open-Meteo cloud forecast"] --> G
+    M --> H
+
+    style G fill:#12301f,stroke:#4ade80,color:#e8ecf6
+    style H fill:#2e2713,stroke:#fbbf24,color:#e8ecf6
+    style I fill:#2f1717,stroke:#f87171,color:#e8ecf6
+```
+
+The load-bearing idea behind the map: **standing in direct sunlight is exactly
+equivalent to having line of sight to the Sun.** So a sun/shade map at maximum
+eclipse *is* a "can you see it from here" map for a whole area at once.
 
 ## Why the horizon matters this time
 
@@ -48,6 +84,29 @@ So the tool combines three layers:
 - **Shareable links** — the location lives in the URL (including your assumed
   screen), so any spot can be sent on.
 - **3D map** — pitched terrain view with a sightline showing which way to look.
+
+## What it actually tells you
+
+Three real spots, same eclipse, same evening:
+
+| Where | Verdict | Why |
+|---|---|---|
+| Open parkland, Alexandra Palace | **Yes — 91.3% covered** | Sun sits 4.1° above the skyline at maximum |
+| A street at Bank, City of London | **No — not from here** | 6,352 mapped buildings; the Sun is behind a tower 76 m away |
+| A valley 2.5 km east of Snowdon | **Maybe — it will be close** | Clear at maximum, then the mountain takes it: last contact −8.0° |
+
+The same spot flips between those answers depending on what you tell it is in front
+of you. From Alexandra Palace:
+
+| What's in front of you | Clearance at maximum | Verdict |
+|---|---|---|
+| Nothing / open view | +4.1° | Yes |
+| Fence or hedge (2 m at 8 m) | +4.1° | Yes |
+| Houses opposite (8 m at 25 m) | −3.9° | Hidden |
+| Mature trees (15 m at 40 m) | −8.0° | Hidden |
+
+That table is the whole argument for the tool. At 10.5° Sun altitude, ordinary
+suburban houses across a road are enough.
 
 ## Running it
 
