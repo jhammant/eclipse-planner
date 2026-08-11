@@ -60,7 +60,7 @@ async function loadTile(z: number, x: number, y: number): Promise<Tile | null> {
       }
       return heights;
     } catch {
-      // Ocean tiles and gaps 404 — treat as sea level rather than failing the ray.
+      // Signals "no data", NOT "sea level" — see sampleElevation.
       return null;
     }
   })();
@@ -88,8 +88,14 @@ export async function preloadTiles(points: Array<{ lng: number; lat: number }>, 
 }
 
 /**
- * Bilinearly-interpolated elevation in metres. Returns 0 (sea level) where the
- * DEM has no coverage. Only valid for tiles already fetched by `preloadTiles`.
+ * Bilinearly-interpolated elevation in metres, or `NaN` where the DEM has no data.
+ *
+ * It must NOT fall back to 0. A failed tile fetch would then be indistinguishable
+ * from sea level, which produces a textbook flat horizon and a confident "yes, you
+ * will see it" built on data that was never loaded — and tile failures get *more*
+ * likely as traffic rises. Callers must handle NaN explicitly.
+ *
+ * Only valid for tiles already fetched by `preloadTiles`/`settleTiles`.
  */
 export function sampleElevation(lng: number, lat: number, z = DEM_ZOOM): number {
   const t = lngLatToTile(lng, lat, z);
@@ -116,7 +122,7 @@ export function sampleElevation(lng: number, lat: number, z = DEM_ZOOM): number 
     if (iy >= TILE_SIZE) { tileY += 1; iy -= TILE_SIZE; }
 
     const tile = syncTile(z, tileX, tileY);
-    if (!tile) return 0;
+    if (!tile) return NaN;
     return tile[iy * TILE_SIZE + ix];
   };
 

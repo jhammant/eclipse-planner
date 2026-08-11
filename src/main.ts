@@ -8,6 +8,9 @@ import {
 } from 'maplibre-gl';
 import './style.css';
 
+import { statusAt, startTicker } from './countdown';
+import { installErrorHandlers } from './errors';
+
 import {
   buildingSkyline,
   containingBuilding,
@@ -34,11 +37,11 @@ import {
   withNearField,
   type HorizonProfile,
 } from './horizon';
+import { scanVisibility } from './shadegrid';
 import { renderSky } from './skyview';
 import {
   eclipseWindow,
   fetchCloudForecast,
-  fetchCloudGrid,
   meanCloud,
   type CloudForecast,
 } from './weather';
@@ -95,6 +98,8 @@ const state: State = {
   nearHeight: 0,
   nearDistance: 20,
 };
+
+installErrorHandlers();
 
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 
@@ -239,18 +244,27 @@ map.on('load', () => {
     },
   });
 
-  map.addSource('candidates', { type: 'geojson', data: emptyFC() });
-  map.addLayer({
-    id: 'candidates',
-    type: 'circle',
-    source: 'candidates',
-    paint: {
-      'circle-radius': 7,
-      'circle-color': ['get', 'colour'],
-      'circle-stroke-width': 2,
-      'circle-stroke-color': '#0b0e16',
+  map.addSource('shade-grid', { type: 'geojson', data: emptyFC() });
+  map.addLayer(
+    {
+      id: 'shade-grid',
+      type: 'fill',
+      source: 'shade-grid',
+      paint: {
+        // Same thresholds as the written verdict, so the map and the text can
+        // never disagree about what counts as a clear view.
+        // `step` stops are inclusive (>=) but the written verdict is strict (> 0,
+        // > 3), so the stops are nudged a hair past the boundary. Otherwise a
+        // clearance of exactly 0.00 painted amber while the words said blocked.
+        'fill-color': ['step', ['get', 'clearance'], '#f87171', 0.001, '#fbbf24', 3.001, '#4ade80'],
+        // Low enough that roads and field boundaries still read underneath —
+        // people need to recognise the place, not just the colour.
+        'fill-opacity': 0.45,
+      },
     },
-  });
+    // Under the sightline, so the bearing to the Sun stays legible over the grid.
+    'sightline',
+  );
 
   if (state.circ) drawSightline(state.lat, state.lng, state.circ.peak.sun.azimuth);
 });
@@ -299,12 +313,16 @@ let generation = 0;
 async function update(lat: number, lng: number, label = '') {
   const gen = ++generation;
   stopPlayback();
+  dropShadeGridIfElsewhere(lat, lng);
   state.lat = lat;
   state.lng = lng;
   state.label = label;
   state.forecast = undefined;
   state.buildings = 'pending';
   state.insideBuilding = false;
+  // Cleared so a scan cannot run against the previous location's geometry while
+  // the new one is still being worked out.
+  state.circ = null;
   writeHash(lat, lng, label);
 
   reportEl.innerHTML = '<p class="spinner">Working out the hills around you…</p>';
@@ -922,96 +940,139 @@ $<HTMLButtonElement>('#use-location').addEventListener('click', () => {
   );
 });
 
-// ---------------------------------------------------------------- best spot near me
+// ---------------------------------------------------------------- sun & shade map
 
 const findBtn = $<HTMLButtonElement>('#find-best');
+const legendEl = $('#shade-legend');
+/**
+ * Restored after every scan. Kept short deliberately: on a 390 px phone the
+ * finder buttons are two 146 px columns, and a label that wraps to two lines
+ * while "Scanning… 60%" fits on one makes the whole block jump height mid-scan.
+ */
+const FIND_LABEL = findBtn.textContent || 'Where can I see it?';
+
+/**
+ * Where the painted grid covers. The grid is a property of the landscape, not of
+ * the pin, so tapping a green square to check it properly must not wipe it — but
+ * jumping to another town must, or it would sit there describing somewhere else.
+ */
+let shadeBounds: [[number, number], [number, number]] | null = null;
+
+function dropShadeGridIfElsewhere(lat: number, lng: number) {
+  if (!shadeBounds) return;
+  const [[west, south], [east, north]] = shadeBounds;
+  if (lng >= west && lng <= east && lat >= south && lat <= north) return;
+
+  shadeBounds = null;
+  (map.getSource('shade-grid') as GeoJSONSource | undefined)?.setData(emptyFC());
+  legendEl.hidden = true;
+}
+
+/**
+ * Commit a scan result: data, bounds and legend together, as one unit.
+ *
+ * The scan needs no map at all — it is terrain data and arithmetic — so on a slow
+ * connection it can finish before the style does, and the paint has to be deferred.
+ * Committing the bounds inside this function means a deferred paint cannot
+ * resurrect a grid the user has already moved away from: if the bounds were
+ * superseded while we waited, we abandon the whole thing rather than painting a
+ * grid with no matching bounds (which would then be un-droppable).
+ */
+function paintShadeGrid(
+  grid: Parameters<GeoJSONSource['setData']>[0],
+  bounds: [[number, number], [number, number]],
+) {
+  const commit = () => {
+    const src = map.getSource('shade-grid') as GeoJSONSource | undefined;
+    if (!src) return;
+    src.setData(grid);
+    shadeBounds = bounds;
+    legendEl.hidden = false;
+  };
+
+  if (map.getSource('shade-grid')) {
+    commit();
+    return;
+  }
+
+  const generationAtQueue = generation;
+  map.once('load', () => {
+    // Abandon if the user has moved on while the style was still loading.
+    if (generationAtQueue !== generation) return;
+    commit();
+  });
+}
 
 findBtn.addEventListener('click', async () => {
-  if (!state.circ) return;
+  if (!state.circ) {
+    setHint('Still working out your view — try again in a moment.');
+    return;
+  }
+
+  // Watch the same counter `update` moves: if the user picks a new location
+  // mid-scan, the rows stop and nothing is painted for the spot they left.
+  const gen = generation;
+
   findBtn.disabled = true;
-  findBtn.textContent = 'Scanning…';
-  setHint('Scanning spots within 6 km…');
+  findBtn.textContent = 'Loading terrain…';
+  setHint('Checking a thousand spots around you for a clear view of the Sun…');
 
   try {
-    const sunAz = state.circ.peak.sun.azimuth;
-    const sunAlt = state.circ.peak.sun.altitude;
+    const result = await scanVisibility(
+      { lat: state.lat, lng: state.lng },
+      state.circ.peak.sun.azimuth,
+      state.circ.peak.sun.altitude,
+      { cancelled: () => gen !== generation },
+      (fraction) => {
+        findBtn.textContent =
+          fraction > 0 ? `Scanning… ${Math.round(fraction * 100)}%` : 'Loading terrain…';
+      },
+    );
+    if (!result) return;
 
-    // A 5×5 grid over ~12 km. The DEM tiles are already cached from the main
-    // profile, so this is mostly arithmetic.
-    const candidates: Array<{ lat: number; lng: number }> = [];
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dy = -2; dy <= 2; dy++) {
-        const east = destination(state.lat, state.lng, 90, dx * 3000);
-        const p = destination(east.lat, east.lng, 0, dy * 3000);
-        candidates.push(p);
-      }
-    }
+    paintShadeGrid(result.grid, result.bounds);
+    map.fitBounds(result.bounds, { padding: 24, duration: 900 });
 
-    interface Candidate {
-      lat: number;
-      lng: number;
-      clearance: number;
-      elevation: number;
-      score: number;
-    }
-
-    const scored: Candidate[] = [];
-    for (const c of candidates) {
-      const prof = await computeHorizon(c.lat, c.lng, {
-        fromAzimuth: sunAz - 4,
-        toAzimuth: sunAz + 4,
-        azimuthStep: 2,
-        distanceSteps: 28,
-        maxDistance: 12000,
-      });
-      scored.push({
-        ...c,
-        clearance: clearance(prof, sunAz, sunAlt),
-        elevation: prof.groundElevation,
-        score: 0,
-      });
-    }
-
-    const clouds = await fetchCloudGrid(candidates);
-    scored.forEach((s, i) => {
-      // Clearance is the hard constraint; cloud only breaks ties between open
-      // spots, and extra clearance stops mattering once you can plainly see out.
-      s.score = Math.min(s.clearance, 12) * 10 - (clouds[i] ?? 50) * 0.3;
-    });
-
-    scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, 5);
-
-    const src = map.getSource('candidates') as GeoJSONSource | undefined;
-    src?.setData({
-      type: 'FeatureCollection',
-      features: top.map((s, i) => ({
-        type: 'Feature',
-        properties: { colour: i === 0 ? '#4ade80' : '#7dd3fc' },
-        geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
-      })),
-    });
-
-    const best = top[0];
-    if (best && best.clearance > 0) {
+    const openPct = Math.round(result.openFraction * 100);
+    if (!result.best || result.best.clearance <= 0) {
       setHint(
-        `Best nearby: ${best.clearance.toFixed(1)}° clearance at ${best.elevation.toFixed(0)} m ` +
-          `— pinned green on the map. Click it to check it properly.`,
-      );
-      map.fitBounds(
-        [
-          [Math.min(...top.map((t) => t.lng)), Math.min(...top.map((t) => t.lat))],
-          [Math.max(...top.map((t) => t.lng)), Math.max(...top.map((t) => t.lat))],
-        ],
-        { padding: 60, duration: 900 },
+        'Nowhere within 4 km has the Sun clear of the hills at maximum. You would need to travel ' +
+          'further, or find higher ground with an open view to the west.',
       );
     } else {
-      setHint('Nothing nearby has a clear western horizon — try a wider search area.');
+      setHint(
+        `${openPct}% of the 8 km around you has the Sun above the skyline at maximum — the best ` +
+          `spot clears it by ${result.best.clearance.toFixed(1)}° at ${result.best.elevation.toFixed(0)} m. ` +
+          'Tap a green square to check that spot properly.',
+      );
     }
   } finally {
     findBtn.disabled = false;
-    findBtn.textContent = 'Find the best spot near me';
+    findBtn.textContent = FIND_LABEL;
+    // A cancelled or failed scan must not leave the progress hint on screen.
+    if (hintEl.textContent?.startsWith('Checking a thousand')) {
+      setHint('Or scroll down and tap the map.');
+    }
   }
+});
+
+// ---------------------------------------------------------------- live status
+
+const statusEl = $('#status');
+const statusHeadline = $('#status-headline');
+const statusDetail = $('#status-detail');
+
+startTicker(() => {
+  if (!state.circ || !state.frames.length) {
+    statusEl.hidden = true;
+    return 5_000;
+  }
+  const s = statusAt(new Date(), state.circ, state.frames);
+  statusHeadline.textContent = s.headline;
+  statusDetail.textContent = s.detail;
+  statusEl.hidden = false;
+  statusEl.dataset.phase = s.phase;
+  return s.refreshMs;
 });
 
 // ---------------------------------------------------------------- near field

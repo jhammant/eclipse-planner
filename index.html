@@ -29,6 +29,10 @@
     />
     <meta name="twitter:image" content="https://eclipse.hammantlabs.com/og.png" />
     <meta name="theme-color" content="#0b0e16" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
   </head>
   <body>
     <header class="topbar">
@@ -54,6 +58,12 @@
       </div>
     </header>
 
+    <!-- Live status. On the day this is what makes the page worth reopening. -->
+    <div class="status" id="status" hidden>
+      <strong id="status-headline"></strong>
+      <span id="status-detail"></span>
+    </div>
+
     <!-- Address entry is the front door: most people arrive wanting to type where they live. -->
     <section class="finder">
       <form class="search" id="search-form" role="search" autocomplete="off">
@@ -69,7 +79,7 @@
       </form>
       <div class="finder-actions">
         <button type="button" id="use-location" class="ghost">Use my location</button>
-        <button type="button" id="find-best" class="ghost">Find the best spot near me</button>
+        <button type="button" id="find-best" class="ghost">Where can I see it?</button>
       </div>
       <p class="finder-hint" id="finder-hint">Showing an example spot (Alexandra Palace, London) — enter your address above, or scroll down and tap the map.</p>
     </section>
@@ -88,6 +98,15 @@
       <section class="panel map-panel">
         <div class="panel-head"><h2>Pick a spot</h2></div>
         <div id="map"></div>
+
+        <!-- Hidden until a scan has run: an unexplained key is worse than none. -->
+        <div class="legend" id="shade-legend" hidden>
+          <span class="key"><i class="sw good"></i>You'd see it</span>
+          <span class="key"><i class="sw warn"></i>Only just</span>
+          <span class="key"><i class="sw bad"></i>Hills in the way</span>
+          <span class="legend-note">Hills only — buildings and trees aren't in this map. Tap a
+            square to check that spot properly.</span>
+        </div>
         <p class="hint">Click anywhere to test it. The marker is draggable.</p>
       </section>
 
@@ -143,6 +162,56 @@
 
 
     </main>
+
+    <section class="explain">
+      <div class="explain-col">
+        <h2>It won't go dark</h2>
+        <p>
+          This is a <em>partial</em> eclipse everywhere in the UK — the Moon never covers the Sun
+          completely. Even at 90-odd per cent you get no stars, no corona and no sudden night. What
+          you get is stranger and easier to miss: the light goes flat and slightly metallic, colours
+          dull, shadows sharpen, and it feels like a thunderstorm is coming that never arrives.
+          Sunset is only about twenty minutes after the eclipse ends, so the sky will be warming
+          towards gold at the same time.
+        </p>
+        <p>
+          If you look up expecting darkness you will think nothing happened. Look through eclipse
+          glasses and you will see a crescent Sun — that's the show.
+        </p>
+      </div>
+
+      <div class="explain-col">
+        <h2>Photographing it</h2>
+        <p>
+          Pointing a phone straight at the Sun without a filter will not blind you, but it can
+          damage the camera sensor, and the picture will be a white blob regardless. Hold a spare
+          pair of eclipse glasses over the lens and tap to focus — that gives you the crescent.
+          <strong>Never</strong> look through an optical viewfinder, binoculars or a telescope
+          aimed at the Sun: those concentrate the light and will injure your eye in seconds.
+        </p>
+        <p>
+          The easier photograph is the ground. Find dappled shade under a leafy tree — every gap
+          between the leaves acts as a pinhole and projects dozens of tiny crescents onto the
+          pavement.
+        </p>
+      </div>
+
+      <div class="explain-col">
+        <h2>If it's cloudy</h2>
+        <p>
+          Thin high cloud is fine — often better, since it dims the glare. Thick low cloud is not,
+          and there is no fix except moving, which is why this tool shows the forecast next to the
+          verdict.
+        </p>
+        <p>
+          If you're clouded out, the
+          <a href="https://www.timeanddate.com/live/" rel="noopener">Time and Date live stream</a>
+          carries the total eclipse from Spain and Iceland, where the Sun disappears completely.
+          The next one visible from the UK is 2 August 2027 — about 42% covered, and far higher in
+          the sky than this one.
+        </p>
+      </div>
+    </section>
 
     <footer class="foot">
       <p>

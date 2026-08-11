@@ -39,6 +39,13 @@ export interface HorizonProfile {
   groundElevation: number;
   eyeHeight: number;
   samples: HorizonSample[];
+  /**
+   * Fraction of ray samples the elevation model actually covered, 0-1.
+   *
+   * Below ~0.6 the skyline is guesswork and the UI must decline to give a verdict
+   * rather than report the flat horizon that missing data would otherwise imply.
+   */
+  coverage: number;
 }
 
 /** Great-circle destination point from a start point, bearing and distance. */
@@ -100,8 +107,14 @@ export async function computeHorizon(
   await preloadTiles(allPoints);
   await settleTiles();
 
-  const groundElevation = sampleElevation(lng, lat);
+  const rawGround = sampleElevation(lng, lat);
+  // No ground reading at all: treat as sea level for arithmetic, but `coverage`
+  // below will be 0 and the caller must refuse to answer.
+  const groundElevation = Number.isFinite(rawGround) ? rawGround : 0;
   const eye = groundElevation + eyeHeight;
+
+  let covered = 0;
+  let total = 0;
 
   const samples: HorizonSample[] = rays.map((ray, i) => {
     let best: HorizonSample = {
@@ -113,6 +126,12 @@ export async function computeHorizon(
     };
     for (const p of ray) {
       const elevation = sampleElevation(p.lng, p.lat);
+      total++;
+      // Skip gaps rather than reading them as sea level, which would invent a
+      // horizon that is lower than reality and bias every verdict optimistic.
+      if (!Number.isFinite(elevation)) continue;
+      covered++;
+
       // Distant ground curves away below the tangent plane; subtract that drop.
       const drop = (p.d * p.d) / (2 * REFRACTED_RADIUS);
       const altitude = (Math.atan2(elevation - eye - drop, p.d) * 180) / Math.PI;
@@ -123,7 +142,16 @@ export async function computeHorizon(
     return best;
   });
 
-  return { lat, lng, groundElevation, eyeHeight, samples };
+  const coverage = total ? covered / total : 0;
+  return {
+    lat,
+    lng,
+    groundElevation,
+    eyeHeight,
+    samples,
+    // A ground reading we never got makes the whole profile untrustworthy.
+    coverage: Number.isFinite(rawGround) ? coverage : 0,
+  };
 }
 
 /**

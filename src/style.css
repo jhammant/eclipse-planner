@@ -253,6 +253,39 @@ button.ghost:hover:not(:disabled) { color: var(--ink); }
 
 .maplibregl-ctrl-attrib { font-size: 10px; }
 
+/* ---------- sun & shade legend ---------- */
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  padding: 8px 13px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.legend[hidden] { display: none; }
+
+.legend .key { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+/* Matches the fill-opacity of the map layer, so the swatch reads as the same colour. */
+.legend .sw {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  opacity: 0.75;
+  flex: none;
+}
+
+.legend .sw.good { background: var(--good); }
+.legend .sw.warn { background: var(--warn); }
+.legend .sw.bad  { background: var(--bad); }
+
+.legend-note { color: var(--ink-dim); flex: 1 1 220px; min-width: 0; white-space: normal; }
+
 /* ---------- sky view ---------- */
 
 #sky {
@@ -462,4 +495,76 @@ td.blocked { color: var(--bad); }
   .nf-sliders { gap: 10px; }
   .nf-sliders label { flex: 1 1 100%; }
   .nf-sliders input { flex: 1; width: auto; }
+}
+
+/* ---------- live status strip ---------- */
+
+.status {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: #101728;
+  font-size: 14px;
+}
+
+.status strong { color: var(--accent); font-size: 15px; }
+.status span { color: var(--ink-dim); font-size: 13px; }
+
+/* During the eclipse itself the strip earns a stronger treatment. */
+.status[data-phase='during'] {
+  background: rgba(255, 184, 77, 0.12);
+  border-bottom-color: var(--accent-dim);
+}
+
+@media (max-width: 960px) { .status { padding: 9px 12px; } }
+
+/* ---------- explainer ---------- */
+
+.explain {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px;
+  padding: 24px 20px 8px;
+  border-top: 1px solid var(--line);
+  max-width: 1400px;
+}
+
+.explain h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.explain p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+}
+
+.explain strong { color: #ffd9a8; }
+
+@media (max-width: 960px) { .explain { padding: 18px 12px 4px; gap: 18px; } }
+
+/* ---------- fatal error banner ---------- */
+
+#fatal-error {
+  padding: 12px 16px;
+  background: rgba(248, 113, 113, 0.14);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.5);
+  font-size: 14px;
+}
+
+#fatal-error strong { color: var(--bad); }
+#fatal-error button { margin-left: 10px; }
+#fatal-error .detail {
+  display: block;
+  margin-top: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--ink-dim);
 }
