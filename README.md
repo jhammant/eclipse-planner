@@ -124,3 +124,29 @@ telescope or projection.
 in hidden/background tabs, which stalls MapLibre's render loop — the map appears
 blank in automated browser testing for that reason alone. The DEM loader avoids the
 same class of problem by using `fetch` + `createImageBitmap` rather than `<img>`.
+
+## Licence
+
+Code: [MIT](LICENSE) — do what you like with it.
+
+The data is not mine and carries its own terms:
+
+- Map and building data © [OpenStreetMap](https://www.openstreetmap.org/copyright)
+  contributors, licensed [ODbL](https://opendatacommons.org/licenses/odbl/). If you
+  reuse it, keep the attribution.
+- Elevation from [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/)
+  (SRTM and others; see their attribution requirements).
+- Forecasts from [Open-Meteo](https://open-meteo.com/) (CC BY 4.0).
+- Geocoding by [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) —
+  note their usage policy before pointing serious traffic at it.
+
+## Contributing
+
+Issues and pull requests welcome. The one rule that matters: **this tool must never
+give a confident answer it hasn't earned.** If the data is missing, say so; if
+something wasn't checked, say that too. Several of the worst bugs found during
+development were cases where the app asserted something it did not know — a failed
+tile read as sea level, a geocoded address treated as standing inside your own house.
+Prefer "we don't know" over a plausible guess.
+
+Run `npx tsc --noEmit` before pushing.
