@@ -219,11 +219,19 @@ export function renderSky(
   const height = canvas.clientHeight;
   if (!width || !height) return;
 
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
+  // Assigning width/height reallocates and clears the backing store, so only do
+  // it when the size actually changed — otherwise every scrub frame pays for a
+  // full buffer reallocation.
+  const wantW = Math.round(width * dpr);
+  const wantH = Math.round(height * dpr);
+  if (canvas.width !== wantW || canvas.height !== wantH) {
+    canvas.width = wantW;
+    canvas.height = wantH;
+  }
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
 
   const proj = makeProjection(width, height, opts);
 

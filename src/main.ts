@@ -144,8 +144,17 @@ function readHash(): {
   };
 }
 
-let suppressHashHandler = false;
-
+/**
+ * Update the shareable URL.
+ *
+ * `location.hash = ...` was wrong on two counts: it pushed a history entry for
+ * every step of a slider drag (hundreds of them, trapping the back button), and
+ * it fired `hashchange` asynchronously. The guard against our own event was a
+ * `setTimeout(..., 0)` flag, which lost the race under rapid updates — a stray
+ * hashchange then re-entered `update()` and kicked off a full terrain recompute
+ * and network fetch mid-drag. `replaceState` fires no event at all, so the whole
+ * race disappears along with the history spam.
+ */
 function writeHash(lat: number, lng: number, label: string) {
   const h = new URLSearchParams();
   h.set('lat', lat.toFixed(5));
@@ -155,14 +164,11 @@ function writeHash(lat: number, lng: number, label: string) {
     h.set('nh', String(state.nearHeight));
     h.set('nd', String(state.nearDistance));
   }
-  suppressHashHandler = true;
-  location.hash = h.toString();
-  // The hashchange event fires asynchronously; clear the guard after it lands.
-  setTimeout(() => { suppressHashHandler = false; }, 0);
+  history.replaceState(null, '', `#${h.toString()}`);
 }
 
+// Only fires for navigation we did not cause — a pasted link, or back/forward.
 window.addEventListener('hashchange', () => {
-  if (suppressHashHandler) return;
   const h = readHash();
   if (h) {
     marker.setLngLat([h.lng, h.lat]);
@@ -663,10 +669,21 @@ function renderCurrentFrame() {
     (cl <= 0 ? '  ·  hidden' : '');
 }
 
+let framePending = 0;
+
+/** Draw at most once per animation frame while a slider is being dragged. */
+function scheduleFrame() {
+  if (framePending) return;
+  framePending = requestAnimationFrame(() => {
+    framePending = 0;
+    renderCurrentFrame();
+  });
+}
+
 timeInput.addEventListener('input', () => {
   stopPlayback();
   state.frameIndex = Number(timeInput.value);
-  renderCurrentFrame();
+  scheduleFrame();
 });
 
 /** Slider runs left-to-right as "more zoomed in", so invert it. */
@@ -676,7 +693,7 @@ function spanFromSlider(v: number): number {
 
 zoomInput.addEventListener('input', () => {
   state.verticalSpan = spanFromSlider(Number(zoomInput.value));
-  renderCurrentFrame();
+  scheduleFrame();
 });
 state.verticalSpan = spanFromSlider(Number(zoomInput.value));
 
@@ -1027,14 +1044,28 @@ function syncNearFieldUI() {
   }
 }
 
-/** Recompute the verdict and repaint without re-fetching any data. */
+let repaintPending = 0;
+
+/**
+ * Recompute the verdict and repaint without re-fetching any data.
+ *
+ * Sliders fire `input` far faster than we can rebuild the report and redraw the
+ * canvas, so the work is coalesced into a single animation frame. Without this
+ * the queue backs up behind the drag and the control feels like it is fighting
+ * your thumb.
+ */
 function reapplyNearField() {
   if (!state.baseProfile) return;
   state.profile = applyNearField(state.baseProfile);
-  writeHash(state.lat, state.lng, state.label);
   syncNearFieldUI();
-  renderReport();
-  renderCurrentFrame();
+
+  if (repaintPending) return;
+  repaintPending = requestAnimationFrame(() => {
+    repaintPending = 0;
+    writeHash(state.lat, state.lng, state.label);
+    renderReport();
+    renderCurrentFrame();
+  });
 }
 
 nfPresets.addEventListener('click', (e) => {

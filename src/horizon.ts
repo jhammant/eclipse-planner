@@ -126,25 +126,37 @@ export async function computeHorizon(
   return { lat, lng, groundElevation, eyeHeight, samples };
 }
 
-/** Skyline altitude at an arbitrary azimuth, linearly interpolated. */
+/**
+ * Skyline altitude at an arbitrary azimuth, linearly interpolated.
+ *
+ * Samples are evenly spaced, so this indexes straight in. It used to scan the
+ * array linearly, and the sky view calls it once per pixel column — on a phone
+ * that was ~180 comparisons x ~400 columns every animation frame, which is what
+ * made dragging the sliders stutter.
+ */
 export function horizonAt(profile: HorizonProfile, azimuth: number): number {
   const { samples } = profile;
   if (!samples.length) return 0;
+  if (samples.length === 1) return samples[0].altitude;
 
-  const az = ((azimuth % 360) + 360) % 360;
-  let lo = samples[0];
-  let hi = samples[samples.length - 1];
-  for (let i = 0; i < samples.length - 1; i++) {
-    if (samples[i].azimuth <= az && samples[i + 1].azimuth >= az) {
-      lo = samples[i];
-      hi = samples[i + 1];
-      break;
-    }
-  }
-  const span = hi.azimuth - lo.azimuth;
-  if (span <= 0) return lo.altitude;
-  const t = (az - lo.azimuth) / span;
-  return lo.altitude + (hi.altitude - lo.altitude) * t;
+  const first = samples[0].azimuth;
+  const step = samples[1].azimuth - first;
+  if (step <= 0) return samples[0].altitude;
+
+  // Bring the query into the same revolution as the profile's start.
+  let az = azimuth;
+  while (az - first > 180) az -= 360;
+  while (az - first < -180) az += 360;
+
+  const pos = (az - first) / step;
+  // Clamp outside the profiled arc. Extrapolating between the first and last
+  // sample (as the old scan did on a miss) invented a skyline that isn't there.
+  if (pos <= 0) return samples[0].altitude;
+  if (pos >= samples.length - 1) return samples[samples.length - 1].altitude;
+
+  const i = Math.floor(pos);
+  const t = pos - i;
+  return samples[i].altitude + (samples[i + 1].altitude - samples[i].altitude) * t;
 }
 
 /** How far above the local skyline the Sun sits, in degrees. Negative = hidden. */
