@@ -9,8 +9,18 @@ npm run studio    # preview and scrub
 npm run render    # -> out/eclipse-launch.mp4
 ```
 
-Two compositions are registered: `EclipseLaunch` (1080×1080, for social feeds) and
-`EclipseLaunchWide` (1920×1080).
+Three compositions are registered: `EclipseLaunch` (1080×1080, for social feeds),
+`EclipseLaunchWide` (1920×1080), and `Poster` — a single frame used as the video
+thumbnail.
+
+```bash
+npm run poster    # -> out/poster.png
+```
+
+The poster is composed rather than grabbed from the film: no single frame carries
+both the recognisable eclipse and the question, and a muted autoplaying feed needs
+both. It uses a 42%-covered crescent, because the actual 91% maximum just reads as
+a dark circle at thumbnail size.
 
 ## The crescent is real
 

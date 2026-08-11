@@ -5,7 +5,8 @@
   "description": "Remotion composition for the eclipse-planner launch video",
   "scripts": {
     "studio": "remotion studio",
-    "render": "remotion render EclipseLaunch out/eclipse-launch.mp4"
+    "render": "remotion render EclipseLaunch out/eclipse-launch.mp4",
+    "poster": "remotion still Poster out/poster.png"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.508",
